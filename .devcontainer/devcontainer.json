@@ -1,0 +1,53 @@
+{
+    "name": "Verilog (ELEN20006)",
+    "build": {
+        "dockerfile": "Dockerfile"
+    },
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "chipsalliance.verible",
+                "eirikpre.systemverilog",
+                "ms-python.python",
+                "lramseyer.vaporview",
+                "charliermarsh.ruff"
+            ],
+            "settings": {
+                "python.defaultInterpreterPath": "/opt/venv/bin/python",
+                "[python]": {
+                    "editor.formatOnSave": true,
+                    "editor.defaultFormatter": "charliermarsh.ruff"
+                },
+                "[verilog]": {
+                    "editor.formatOnSave": true,
+                    "editor.defaultFormatter": "chipsalliance.verible",
+                    "editor.colorDecorators": false
+                },
+                "[systemverilog]": {
+                    "editor.formatOnSave": true,
+                    "editor.defaultFormatter": "chipsalliance.verible",
+                    "editor.colorDecorators": false
+                },
+                "verible.format.enabled": true,
+                "verible.lint.enabled": true,
+                "verible.arguments": [
+                    "--rules_config=.rules.verible_lint",
+                    "--push_diagnostic_notifications"
+                ],
+                "systemverilog.includeIndexing": [
+                    "**/*.{sv,v,svh,vh}"
+                ],
+                "python.testing.unittestEnabled": false,
+                "python.testing.pytestEnabled": true,
+                "workbench.editorAssociations": {
+                    "*.md": "vscode.markdown.preview.editor"
+                }
+            }
+        }
+    },
+    "workspaceFolder": "/workspace",
+    "mounts": [
+        "source=${localWorkspaceFolder},target=/workspace,type=bind"
+    ],
+    "remoteUser": "root"
+}

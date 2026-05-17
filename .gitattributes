@@ -1,0 +1,8 @@
+# Enforce LF (Unix) line endings for all text files
+* text=auto eol=lf
+
+# Explicitly specify for common file types
+*.sv text eol=lf
+*.py text eol=lf
+*.md text eol=lf
+*.v text eol=lf

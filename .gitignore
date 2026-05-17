@@ -1,0 +1,8 @@
+.mypy_cache
+.pytest_cache
+*.vcd
+__pycache__
+a.out
+*.xml
+.venv
+sby/*/
