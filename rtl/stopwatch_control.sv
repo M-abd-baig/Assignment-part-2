@@ -90,6 +90,10 @@ module stopwatch_control (
           lap_hold   <= 1'b1;
         end
       end
+
+      default: begin
+        next_state <= STOPPED_LIVE;
+      end
     endcase
   end
 

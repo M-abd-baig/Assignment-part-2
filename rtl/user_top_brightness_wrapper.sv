@@ -18,30 +18,37 @@ module user_top_brightness_wrapper #(
   logic inner_blank_hours, inner_blank_minutes, inner_blank_seconds;
   logic pwm_signal;
 
-  // Grey code to duty cycle mapping
+  // PWM counter using mod_n_counter (1ms period = 50,000 cycles at 50MHz)
+  logic [15:0] pwm_count;
+  logic [15:0] duty_cycle;
   logic [1:0] brightness;
-  logic [31:0] duty_cycle;
 
   assign brightness = {sw[9], sw[8]};
 
+  // Duty cycle based on brightness (Grey code)
   always_comb begin
     case (brightness)
-      2'b00:   duty_cycle = 32'd125000;  // 12.5% of 1ms (1ms = 50,000 cycles at 50MHz)
-      2'b01:   duty_cycle = 32'd250000;  // 25%
-      2'b11:   duty_cycle = 32'd500000;  // 50%
-      2'b10:   duty_cycle = 32'd1000000;  // 100%
-      default: duty_cycle = 32'd1000000;
+      2'b00:   duty_cycle = 16'd6250;  // 12.5% of 50000
+      2'b01:   duty_cycle = 16'd12500;  // 25% of 50000
+      2'b11:   duty_cycle = 16'd25000;  // 50% of 50000
+      2'b10:   duty_cycle = 16'd50000;  // 100% of 50000
+      default: duty_cycle = 16'd50000;
     endcase
   end
 
-  // PWM generator for brightness (1ms period = 50,000 cycles at 50MHz)
-  pwm_generator #(
-      .COUNTER_MAX(50000)
-  ) u_pwm (
+  // PWM period counter (counts from 0 to 49999)
+  mod_n_counter #(
+      .N(50000),
+      .WIDTH(16)
+  ) u_pwm_counter (
       .clk(clk),
-      .duty_cycle(duty_cycle),
-      .pwm(pwm_signal)
+      .rst(1'b0),
+      .enable(1'b1),
+      .count(pwm_count)
   );
+
+  // PWM output - compare counter with duty cycle
+  assign pwm_signal = (pwm_count < duty_cycle);
 
   // Original user_top instance
   user_top #(
@@ -60,10 +67,12 @@ module user_top_brightness_wrapper #(
   );
 
   // Intercept blanking signals with PWM
+  // When app wants to blank, pass through blank (1); otherwise use PWM (0 = on, 1 = off)
   assign blank_hours = inner_blank_hours ? 1'b1 : ~pwm_signal;
   assign blank_minutes = inner_blank_minutes ? 1'b1 : ~pwm_signal;
   assign blank_seconds = inner_blank_seconds ? 1'b1 : ~pwm_signal;
 
+  // Pass through display values unchanged
   assign hours_disp = inner_hours_disp;
   assign minutes_disp = inner_minutes_disp;
   assign seconds_disp = inner_seconds_disp;

@@ -1,4 +1,11 @@
 `timescale 1ns / 1ps
+
+/* verilator lint_off PINCONNECTEMPTY */
+/* verilator lint_off UNUSEDSIGNAL */
+/* verilator lint_off UNDRIVEN */
+
+
+
 module user_top_timer_v1 #(
     parameter int CYCLES_PER_SECOND = 50_000_000
 ) (
@@ -18,20 +25,21 @@ module user_top_timer_v1 #(
     output logic blank_seconds
 );
 
-  // Timer values (hours: 0-99, minutes: 0-59, seconds: 0-59)
-  logic [6:0] hours, minutes, seconds;
-  logic [6:0] display_hours, display_minutes, display_seconds;
+  // Timer values
+  logic [6:0] hours;
+  logic [5:0] minutes;
+  logic [5:0] seconds;
 
   // Control signals
   logic running;
   logic one_second_tick;
   logic edit_mode;
   logic inc, dec;
-  logic long_press;
   logic auto_inc, auto_dec;
-  logic mode_enable;
+  logic [2:0] mode_enable;
+  logic long_press;
 
-  // Rate generator for 1 second ticks
+  // Rate generator
   restartable_rate_generator #(
       .CYCLE_COUNT(CYCLES_PER_SECOND)
   ) u_tick_gen (
@@ -40,25 +48,32 @@ module user_top_timer_v1 #(
       .tick(one_second_tick)
   );
 
-  // Auto-repeat for button holds (only in edit mode)
+  // Button inputs (active low)
+  assign inc = ~button[1];
+  assign dec = ~button[0];
+  assign long_press = ~button[3];
+
+  // Auto-repeat
   button_auto_repeat u_auto_inc (
       .clk(clk),
-      .in (edit_mode && inc),
-      .out(auto_inc)
+      .button(edit_mode && inc),
+      .pulse(auto_inc)
   );
 
   button_auto_repeat u_auto_dec (
       .clk(clk),
-      .in (edit_mode && dec),
-      .out(auto_dec)
+      .button(edit_mode && dec),
+      .pulse(auto_dec)
   );
 
-  // Edit mode selector (same as Assignment 1)
+  // Edit mode selector
   edit_mode_selector u_mode (
       .clk(clk),
-      .hold(~button[3]),  // Active low button
-      .enable(mode_enable)
+      .button(long_press),
+      .mode_enable(mode_enable)
   );
+
+  assign edit_mode = (mode_enable != 3'b000);
 
   // Hours counter
   editable_countdown #(
@@ -67,10 +82,10 @@ module user_top_timer_v1 #(
   ) u_hours (
       .clk(clk),
       .clr(1'b0),
-      .tick(one_second_tick && (mode_enable == 3'b100)),
+      .tick(one_second_tick && (mode_enable == 3'b100) && (hours != 0 || minutes != 0 || seconds != 0)),
       .edit_mode(mode_enable[2]),
-      .inc(auto_inc && (mode_enable[2])),
-      .dec(auto_dec && (mode_enable[2])),
+      .inc(auto_inc && mode_enable[2]),
+      .dec(auto_dec && mode_enable[2]),
       .count(hours),
       .borrow_out()
   );
@@ -84,9 +99,9 @@ module user_top_timer_v1 #(
       .clr(1'b0),
       .tick(one_second_tick && (mode_enable == 3'b010) && (hours != 0 || minutes != 0 || seconds != 0)),
       .edit_mode(mode_enable[1]),
-      .inc(auto_inc && (mode_enable[1])),
-      .dec(auto_dec && (mode_enable[1])),
-      .count(minutes[5:0]),
+      .inc(auto_inc && mode_enable[1]),
+      .dec(auto_dec && mode_enable[1]),
+      .count(minutes),
       .borrow_out()
   );
 
@@ -99,38 +114,34 @@ module user_top_timer_v1 #(
       .clr(1'b0),
       .tick(one_second_tick && (mode_enable == 3'b001) && (hours != 0 || minutes != 0 || seconds != 0)),
       .edit_mode(mode_enable[0]),
-      .inc(auto_inc && (mode_enable[0])),
-      .dec(auto_dec && (mode_enable[0])),
-      .count(seconds[5:0]),
+      .inc(auto_inc && mode_enable[0]),
+      .dec(auto_dec && mode_enable[0]),
+      .count(seconds),
       .borrow_out()
   );
 
-  // Button inputs
-  assign inc = ~button[1];  // Increment
-  assign dec = ~button[0];  // Decrement
-  assign long_press = ~button[3];  // Long press for set mode
-
-  // Running control
+  // Running control - FIXED: Cannot run when count is zero OR in edit mode
   always_ff @(posedge clk) begin
-    if (~button[0] && ~running && (hours != 0 || minutes != 0 || seconds != 0) && (mode_enable == 3'b000))
+    // Start timer: button[0] pressed, not running, count > 0, NOT in edit mode
+    if (~button[0] && ~running && (hours != 0 || minutes != 0 || seconds != 0) && ~edit_mode) begin
       running <= 1'b1;
-    else if (~button[0] && running && (mode_enable == 3'b000)) running <= 1'b0;
-    else if (hours == 0 && minutes == 0 && seconds == 0) running <= 1'b0;
+    end  // Stop timer: button[0] pressed, running, NOT in edit mode
+    else if (~button[0] && running && ~edit_mode) begin
+      running <= 1'b0;
+    end  // Auto-stop when reaches zero - immediately stop
+    else if (hours == 0 && minutes == 0 && seconds == 0) begin
+      running <= 1'b0;
+    end  // Cannot run in edit mode
+    else if (edit_mode) begin
+      running <= 1'b0;
+    end
   end
-
-  // Mode enable logic
-  assign mode_enable = (long_press && ~running) ? 3'b001 : 3'b000;  // Simplified
-
-  // Display mux
-  assign display_hours = hours;
-  assign display_minutes = minutes;
-  assign display_seconds = seconds;
 
   // Outputs
   assign led = 10'b0;
-  assign hours_disp = display_hours;
-  assign minutes_disp = display_minutes;
-  assign seconds_disp = display_seconds;
+  assign hours_disp = hours;
+  assign minutes_disp = {1'b0, minutes};
+  assign seconds_disp = {1'b0, seconds};
   assign blank_hours = 1'b0;
   assign blank_minutes = 1'b0;
   assign blank_seconds = 1'b0;
@@ -141,3 +152,9 @@ module user_top_timer_v1 #(
 `endif
 
 endmodule
+
+
+
+/* verilator lint_on PINCONNECTEMPTY */
+/* verilator lint_on UNUSEDSIGNAL */
+/* verilator lint_on UNDRIVEN */

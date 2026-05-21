@@ -13,33 +13,40 @@ module editable_countdown #(
     output logic borrow_out
 );
 
-  logic up;  // For up_down_counter_rst - 1 = up, 0 = down
-  logic enable;
-  logic [WIDTH-1:0] up_down_count;
+  logic [WIDTH-1:0] current_count;
+  logic [WIDTH-1:0] max_value;
 
-  // Determine direction: in edit mode, inc/dec control; else count down on tick
-  assign up = edit_mode ? inc : 1'b0;  // In edit mode, inc counts up; normally count down
-  assign enable = edit_mode ? (inc || dec) : tick;
+  // Cast MAX to correct width
+  assign max_value = MAX[WIDTH-1:0];
 
-  // Use up_down_counter_rst for the actual counting
-  up_down_counter_rst #(
-      .MAX  (MAX),
-      .WIDTH(WIDTH)
-  ) u_counter (
-      .clk(clk),
-      .rst(clr),
-      .enable(enable),
-      .up(up),
-      .count(up_down_count)
-  );
+  // Initialize
+  initial current_count = 0;
 
-  // In edit mode, count follows up_down_count
-  // In countdown mode, we need to invert: when tick=1, count decreases
-  // But up_down_counter_rst can count down when up=0
-  assign count = up_down_count;
+  // Count logic
+  always_ff @(posedge clk) begin
+    if (clr) begin
+      // Clear takes priority
+      current_count <= 0;
+    end else if (edit_mode) begin
+      // Edit mode: increment or decrement on each clock when inc/dec is high
+      if (inc && !dec) begin
+        if (current_count == max_value) current_count <= 0;
+        else current_count <= current_count + 1;
+      end else if (dec && !inc) begin
+        if (current_count == 0) current_count <= max_value;
+        else current_count <= current_count - 1;
+      end
+    end else if (tick) begin
+      // Countdown mode: decrement on tick
+      if (current_count == 0) current_count <= max_value;  // Wrap around
+      else current_count <= current_count - 1;
+    end
+  end
 
-  // Borrow output - combinational
-  // Borrow is high when count is 0 and we get a tick (would decrement to MAX)
-  assign borrow_out = (count == 0) && tick && !edit_mode && !clr;
+  // Output
+  assign count = current_count;
+
+  // Borrow output (combinational)
+  assign borrow_out = (current_count == 0) && tick && !edit_mode && !clr;
 
 endmodule

@@ -1,3 +1,13 @@
+
+`timescale 1ns / 1ps
+
+// ------------------------------------------------------------------
+// Stopwatch Implementation
+// ------------------------------------------------------------------
+
+/* verilator lint_off UNUSEDSIGNAL */
+
+
 `timescale 1ns / 1ps
 
 module user_top_stopwatch_v1 #(
@@ -18,21 +28,27 @@ module user_top_stopwatch_v1 #(
   // Internal signals
   logic rise_start_stop, rise_lap;
   logic counter_rst, counter_enable, lap_hold;
-  logic [6:0] minutes, seconds, centiseconds;
-  logic [6:0] display_minutes, display_seconds, display_centiseconds;
+  logic [6:0] minutes, centiseconds;
+  logic [5:0] seconds;
+  logic [6:0] display_minutes, display_centiseconds;
+  logic [5:0] display_seconds;
 
-  // Rising edge detectors for buttons - FIXED port names
+  // Rising edge detectors
   rising_edge_detector u_start_stop (
       .clk(clk),
-      .sig_in(~button[0]),  // Changed from 'in' to 'sig_in'
-      .rise(rise_start_stop)  // Changed from 'out' to 'rise'
+      .sig_in(~button[0]),
+      .rise(rise_start_stop)
   );
 
   rising_edge_detector u_lap (
-      .clk   (clk),
-      .sig_in(~button[1]),  // Changed from 'in' to 'sig_in'
-      .rise  (rise_lap)     // Changed from 'out' to 'rise'
+      .clk(clk),
+      .sig_in(~button[1]),
+      .rise(rise_lap)
   );
+
+  // Handle simultaneous presses
+  wire actual_rise_start_stop = rise_start_stop & ~rise_lap;
+  wire actual_rise_lap = rise_lap & ~rise_start_stop;
 
   // Stopwatch counter
   stopwatch_counter #(
@@ -46,7 +62,7 @@ module user_top_stopwatch_v1 #(
       .centiseconds(centiseconds)
   );
 
-  // Snapshot mux for lap functionality
+  // Snapshot mux for lap
   snapshot_mux #(
       .WIDTH(7)
   ) u_mux_minutes (
@@ -61,39 +77,30 @@ module user_top_stopwatch_v1 #(
   ) u_mux_seconds (
       .clk(clk),
       .hold(lap_hold),
-      .d(seconds[5:0]),
-      .q(display_seconds[5:0])
+      .d(seconds),
+      .q(display_seconds)
   );
 
-  // For centiseconds - need 7 bits (0-99)
-  snapshot_mux #(
-      .WIDTH(7)
-  ) u_mux_centiseconds (
-      .clk(clk),
-      .hold(lap_hold),
-      .d(centiseconds),
-      .q(display_centiseconds)
-  );
-
-  // Stopwatch control FSM
+  // Stopwatch control
   stopwatch_control u_control (
       .clk(clk),
-      .rise_start_stop(rise_start_stop),
-      .rise_lap(rise_lap),
+      .rise_start_stop(actual_rise_start_stop),
+      .rise_lap(actual_rise_lap),
       .counter_rst(counter_rst),
       .counter_enable(counter_enable),
       .lap_hold(lap_hold)
   );
 
-  // Output assignments
-  assign led = 10'b0;
-  assign hours_disp = 7'b0;  // No hours for stopwatch
-  assign minutes_disp = display_minutes;
-  assign seconds_disp = display_seconds;
-
-  // Blanking: show minutes and seconds, blank hours
-  assign blank_hours = 1'b1;
+  // Outputs - FOR TEST: map counter directly to see if it's counting
+  assign led           = 10'b0;
+  assign hours_disp    = 7'b0;
+  assign minutes_disp  = minutes;  // Direct from counter (skip mux for debugging)
+  assign seconds_disp  = {1'b0, seconds};  // Direct from counter (skip mux)
+  assign blank_hours   = 1'b0;  // Changed to 0 to show value
   assign blank_minutes = 1'b0;
   assign blank_seconds = 1'b0;
 
 endmodule
+
+
+/* verilator lint_on UNUSEDSIGNAL */
