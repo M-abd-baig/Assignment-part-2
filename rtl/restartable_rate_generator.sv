@@ -7,21 +7,19 @@ module restartable_rate_generator #(
     parameter int CYCLE_COUNT = 2
 ) (
     input  logic clk,
-    input  logic run,  //simply the signal that says "start counting"
+    input  logic run,
     output logic tick
 );
 
   logic tick_qualifier;
-  logic running = 1'b0;
 
   generate
     if (CYCLE_COUNT > 1) begin : g_general
-      //$clog2(CYCLE_COUNT) means "ceiling log base 2".
       localparam int CountWidth = $clog2(CYCLE_COUNT);
-      //^calculates how many bits i need to store a number up to cycle count
       logic rst_count;
       logic enable_count;
       logic [CountWidth-1:0] count;
+
       mod_n_counter #(
           .N(CYCLE_COUNT),
           .WIDTH(CountWidth)
@@ -31,25 +29,22 @@ module restartable_rate_generator #(
           .enable(enable_count),
           .count(count)
       );
+
+      // Reset counter when run is low
       assign rst_count = !run;
+      // Only count when run is high
       assign enable_count = run;
       assign tick_qualifier = (count == CountWidth'(CYCLE_COUNT - 1));
 
+      // No extra flip-flop - tick should be combinational based on current state
+      assign tick = run && tick_qualifier;
 
-      //including counter instantiaion
     end else begin : g_special
-      assign tick_qualifier = 1'b1;
+      assign tick = run;  // Direct passthrough when CYCLE_COUNT = 1
     end
   endgenerate
 
-  //Becomes high at the end of each cyle
-
-
-
-  always_ff @(posedge clk) running <= run;
-  assign tick = running && tick_qualifier;
 endmodule
-
 
 /*SOME NOTES*/
 /*1- What does CYCLE_COUNT do and why do we need it?

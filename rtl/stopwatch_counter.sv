@@ -5,11 +5,11 @@ module stopwatch_counter #(
     input logic clk,
     input logic rst,
     input logic enable,
-    output logic [6:0] minutes = 0,
-    output logic [5:0] seconds = 0,
-    output logic [6:0] centiseconds = 0
+    output logic [6:0] minutes,
+    output logic [5:0] seconds,
+    output logic [6:0] centiseconds
 );
-  localparam int RealCycleCount = CYCLES_PER_SECOND / 100 - 1;
+  localparam int RealCycleCount = CYCLES_PER_SECOND / 100;
   //logic run;
   logic tick;
   //assign run = !rst && enable;
