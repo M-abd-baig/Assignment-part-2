@@ -1,5 +1,4 @@
 `timescale 1ns / 1ps
-
 module stopwatch_control (
     input  logic clk,
     input  logic rise_start_stop,
@@ -9,92 +8,48 @@ module stopwatch_control (
     output logic lap_hold
 );
 
-  // State encoding as per spec
-  typedef enum logic [1:0] {
-    STOPPED_LIVE   = 2'b00,
-    RUNNING_LIVE   = 2'b01,
-    RUNNING_FROZEN = 2'b10,  // Note: order matters for assertions
-    STOPPED_FROZEN = 2'b11
-  } state_t;
+  logic running;
+  logic frozen;
 
-  state_t state, next_state;
-
-  // Initialize to STOPPED_LIVE
+  // Initialize all outputs to 0
   initial begin
-    state = STOPPED_LIVE;
+    running = 1'b0;
+    frozen = 1'b0;
     counter_rst = 1'b0;
     counter_enable = 1'b0;
     lap_hold = 1'b0;
   end
 
-  // State register
+  // Running toggles on start/stop (only on rising edge, ignoring simultaneous)
   always_ff @(posedge clk) begin
-    state <= next_state;
+    if (rise_start_stop && !rise_lap) begin
+      running <= ~running;
+    end
   end
 
-  // Next state and output logic combined
+  // Frozen behavior:
+  // - Toggles on lap when running
+  // - Resets to 0 when stopped
   always_ff @(posedge clk) begin
-    // Default outputs
-    counter_rst <= 1'b0;
-    counter_enable <= 1'b0;
-    lap_hold <= 1'b0;
+    if (!running) begin
+      frozen <= 1'b0;
+    end else if (rise_lap && !rise_start_stop && running) begin
+      frozen <= ~frozen;
+    end
+  end
 
-    case (state)
-      STOPPED_LIVE: begin
-        if (rise_start_stop) begin
-          next_state <= RUNNING_LIVE;
-          counter_enable <= 1'b1;
-        end else if (rise_lap) begin
-          next_state <= STOPPED_FROZEN;
-          counter_rst <= 1'b1;  // Reset when lap pressed while stopped with live display
-          lap_hold <= 1'b1;
-        end else begin
-          next_state <= STOPPED_LIVE;
-        end
-      end
+  // Reset pulse - exactly one cycle when:
+  // - Stopped (not running) AND
+  // - Not frozen AND
+  // - Lap pressed (and not start_stop simultaneously)
+  always_ff @(posedge clk) begin
+    counter_rst <= (!running && !frozen && rise_lap && !rise_start_stop);
+  end
 
-      RUNNING_LIVE: begin
-        if (rise_start_stop) begin
-          next_state <= STOPPED_LIVE;
-        end else if (rise_lap) begin
-          next_state <= RUNNING_FROZEN;
-          lap_hold   <= 1'b1;
-        end else begin
-          next_state <= RUNNING_LIVE;
-          counter_enable <= 1'b1;
-        end
-      end
-
-      RUNNING_FROZEN: begin
-        if (rise_start_stop) begin
-          next_state <= STOPPED_FROZEN;
-          lap_hold   <= 1'b1;
-        end else if (rise_lap) begin
-          next_state <= RUNNING_LIVE;
-        end else begin
-          next_state <= RUNNING_FROZEN;
-          counter_enable <= 1'b1;
-          lap_hold <= 1'b1;
-        end
-      end
-
-      STOPPED_FROZEN: begin
-        if (rise_start_stop) begin
-          next_state <= RUNNING_FROZEN;
-          counter_enable <= 1'b1;
-          lap_hold <= 1'b1;
-        end else if (rise_lap) begin
-          next_state <= STOPPED_LIVE;
-        end else begin
-          next_state <= STOPPED_FROZEN;
-          lap_hold   <= 1'b1;
-        end
-      end
-
-      default: begin
-        next_state <= STOPPED_LIVE;
-      end
-    endcase
+  // Output assignments
+  always_comb begin
+    counter_enable = running;
+    lap_hold = frozen;
   end
 
 endmodule

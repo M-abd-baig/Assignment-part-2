@@ -1,11 +1,3 @@
-`timescale 1s / 1ps
-
-
-/* verilator lint_off UNUSEDSIGNAL */
-/* verilator lint_off UNDRIVEN */
-/* verilator lint_off WIDTHTRUNC */
-
-
 `timescale 1ns / 1ps
 
 module user_top_timepiece_v1 #(
@@ -23,23 +15,24 @@ module user_top_timepiece_v1 #(
     output logic blank_seconds
 );
 
-  logic [1:0] mode_sel;
-  assign mode_sel = sw[1:0];
-
-  // Watch outputs
+  // Watch signals
   logic [9:0] watch_led;
   logic [6:0] watch_hours, watch_minutes, watch_seconds;
   logic watch_blank_hours, watch_blank_minutes, watch_blank_seconds;
 
-  // Stopwatch outputs
+  // Stopwatch signals
   logic [9:0] stopwatch_led;
   logic [6:0] stopwatch_hours, stopwatch_minutes, stopwatch_seconds;
   logic stopwatch_blank_hours, stopwatch_blank_minutes, stopwatch_blank_seconds;
 
-  // Timer outputs
+  // Timer signals
   logic [9:0] timer_led;
   logic [6:0] timer_hours, timer_minutes, timer_seconds;
   logic timer_blank_hours, timer_blank_minutes, timer_blank_seconds;
+
+  // Mode selection using switches 1:0
+  logic [1:0] mode_sel;
+  assign mode_sel = sw[1:0];
 
   // Watch instance
   user_top_watch_v4 #(
@@ -91,7 +84,7 @@ module user_top_timepiece_v1 #(
 
   // Output mux based on mode_sel
   always_comb begin
-    // Default to watch
+    // Default to Watch (mode 00 or 10)
     led = watch_led;
     hours_disp = watch_hours;
     minutes_disp = watch_minutes;
@@ -124,8 +117,3 @@ module user_top_timepiece_v1 #(
   end
 
 endmodule
-
-
-/* verilator lint_on UNUSEDSIGNAL */
-/* verilator lint_on UNDRIVEN */
-/* verilator lint_on WIDTHTRUNC */

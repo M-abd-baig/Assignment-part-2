@@ -1,13 +1,3 @@
-
-`timescale 1ns / 1ps
-
-// ------------------------------------------------------------------
-// Stopwatch Implementation
-// ------------------------------------------------------------------
-
-/* verilator lint_off UNUSEDSIGNAL */
-
-
 `timescale 1ns / 1ps
 
 module user_top_stopwatch_v1 #(
@@ -30,7 +20,7 @@ module user_top_stopwatch_v1 #(
   logic counter_rst, counter_enable, lap_hold;
   logic [6:0] minutes, centiseconds;
   logic [5:0] seconds;
-  logic [6:0] display_minutes, display_centiseconds;
+  logic [6:0] display_minutes;
   logic [5:0] display_seconds;
 
   // Rising edge detectors
@@ -46,7 +36,7 @@ module user_top_stopwatch_v1 #(
       .rise(rise_lap)
   );
 
-  // Handle simultaneous presses
+  // Handle simultaneous presses - both ignored
   wire actual_rise_start_stop = rise_start_stop & ~rise_lap;
   wire actual_rise_lap = rise_lap & ~rise_start_stop;
 
@@ -62,7 +52,7 @@ module user_top_stopwatch_v1 #(
       .centiseconds(centiseconds)
   );
 
-  // Snapshot mux for lap
+  // Snapshot mux for lap freeze
   snapshot_mux #(
       .WIDTH(7)
   ) u_mux_minutes (
@@ -81,7 +71,7 @@ module user_top_stopwatch_v1 #(
       .q(display_seconds)
   );
 
-  // Stopwatch control
+  // Stopwatch control FSM
   stopwatch_control u_control (
       .clk(clk),
       .rise_start_stop(actual_rise_start_stop),
@@ -91,16 +81,13 @@ module user_top_stopwatch_v1 #(
       .lap_hold(lap_hold)
   );
 
-  // Outputs - FOR TEST: map counter directly to see if it's counting
+  // Output assignments
   assign led           = 10'b0;
   assign hours_disp    = 7'b0;
-  assign minutes_disp  = minutes;  // Direct from counter (skip mux for debugging)
-  assign seconds_disp  = {1'b0, seconds};  // Direct from counter (skip mux)
-  assign blank_hours   = 1'b0;  // Changed to 0 to show value
-  assign blank_minutes = 1'b0;
-  assign blank_seconds = 1'b0;
+  assign minutes_disp  = display_minutes;
+  assign seconds_disp  = {1'b0, display_seconds};
+  assign blank_hours   = 1'b1;  // Hours blanked (not used)
+  assign blank_minutes = 1'b0;  // Show minutes
+  assign blank_seconds = 1'b0;  // Show seconds
 
 endmodule
-
-
-/* verilator lint_on UNUSEDSIGNAL */
