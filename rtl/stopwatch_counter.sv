@@ -1,45 +1,82 @@
 `timescale 1ns / 1ps
 
-
 module stopwatch_counter #(
     parameter int CYCLES_PER_SECOND = 50000000
 ) (
     input logic clk,
     input logic rst,
     input logic enable,
-    output logic [6:0] minutes,
-    output logic [5:0] seconds,
-    output logic [6:0] centiseconds
+
+    output logic [6:0] minutes = 0,
+    output logic [5:0] seconds = 0,
+    output logic [6:0] centiseconds = 0
 );
 
-  localparam int CENTI_CYCLES = CYCLES_PER_SECOND / 100;
-  logic centi_tick;
+  // -------------------------------------------------
+  // Tick generator
+  // -------------------------------------------------
 
-  // Generate tick every centisecond
+  logic tick;
+
   restartable_rate_generator #(
-      .CYCLE_COUNT(CENTI_CYCLES)
-  ) u_centi_gen (
+      .CYCLE_COUNT((CYCLES_PER_SECOND / 100))
+  ) rate_gen (
       .clk (clk),
-      .run (enable && !rst),
-      .tick(centi_tick)
+      .run (enable),
+      .tick(tick)
   );
 
-  // Cascade counter: centiseconds(0-99), seconds(0-59), minutes(0-99)
+  // -------------------------------------------------
+  // Clean one-cycle wrap enables
+  // -------------------------------------------------
+
+  logic sec_enable;
+  logic min_enable;
+
+  assign sec_enable = tick && (centiseconds == 99);
+
+  assign min_enable = tick && (centiseconds == 99) && (seconds == 59);
+
+  // -------------------------------------------------
+  // Centiseconds
+  // -------------------------------------------------
+
   cascade_counter #(
-      .N2(100),  // minutes: 0-99
-      .N1(60),   // seconds: 0-59  
-      .N0(100),  // centiseconds: 0-99
-      .W2(7),
-      .W1(6),
-      .W0(7)
-  ) u_cascade (
+      .MAX  (99),
+      .WIDTH(7)
+  ) cs_counter (
       .clk(clk),
       .rst(rst),
-      .enable(centi_tick),
-      .count2(minutes),
-      .count1(seconds),
-      .count0(centiseconds)
+      .enable(tick),
+      .count(centiseconds)
+  );
+
+  // -------------------------------------------------
+  // Seconds
+  // -------------------------------------------------
+
+  cascade_counter #(
+      .MAX  (59),
+      .WIDTH(6)
+  ) sec_counter (
+      .clk(clk),
+      .rst(rst),
+      .enable(sec_enable),
+      .count(seconds)
+  );
+
+  // -------------------------------------------------
+  // Minutes
+  // -------------------------------------------------
+
+  cascade_counter #(
+      .MAX  (99),
+      .WIDTH(7)
+  ) min_counter (
+      .clk(clk),
+      .rst(rst),
+      .enable(min_enable),
+      .count(minutes)
   );
 
 endmodule
-

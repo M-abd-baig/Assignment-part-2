@@ -1,4 +1,6 @@
+
 `timescale 1ns / 1ps
+
 module user_top_brightness_wrapper #(
     parameter int CYCLES_PER_SECOND = 50_000_000
 ) (
@@ -14,32 +16,34 @@ module user_top_brightness_wrapper #(
     output logic blank_seconds
 );
 
+  // PWM period = 1ms = CYCLES_PER_SECOND / 1000
+  localparam int PwmPeriod = CYCLES_PER_SECOND / 1000;
+  localparam int PwmWidth = $clog2(PwmPeriod + 1);
+
   logic [6:0] inner_hours_disp, inner_minutes_disp, inner_seconds_disp;
   logic inner_blank_hours, inner_blank_minutes, inner_blank_seconds;
   logic pwm_signal;
-
-  // PWM counter using mod_n_counter (1ms period = 50,000 cycles at 50MHz)
-  logic [15:0] pwm_count;
-  logic [15:0] duty_cycle;
   logic [1:0] brightness;
+  logic [PwmWidth-1:0] pwm_count;
+  logic [PwmWidth-1:0] duty_cycle;
 
   assign brightness = {sw[9], sw[8]};
 
-  // Duty cycle based on brightness (Grey code)
+  // Duty cycle based on brightness (Grey code) - relative to PwmPeriod
   always_comb begin
     case (brightness)
-      2'b00:   duty_cycle = 16'd6250;  // 12.5% of 50000
-      2'b01:   duty_cycle = 16'd12500;  // 25% of 50000
-      2'b11:   duty_cycle = 16'd25000;  // 50% of 50000
-      2'b10:   duty_cycle = 16'd50000;  // 100% of 50000
-      default: duty_cycle = 16'd50000;
+      2'b00:   duty_cycle = PwmWidth'(PwmPeriod / 8);  // 12.5%
+      2'b01:   duty_cycle = PwmWidth'(PwmPeriod / 4);  // 25%
+      2'b11:   duty_cycle = PwmWidth'(PwmPeriod / 2);  // 50%
+      2'b10:   duty_cycle = PwmWidth'(PwmPeriod);  // 100%
+      default: duty_cycle = PwmWidth'(PwmPeriod);
     endcase
   end
 
-  // PWM period counter (counts from 0 to 49999)
+  // PWM period counter
   mod_n_counter #(
-      .N(50000),
-      .WIDTH(16)
+      .N(PwmPeriod),
+      .WIDTH(PwmWidth)
   ) u_pwm_counter (
       .clk(clk),
       .rst(1'b0),
@@ -67,7 +71,6 @@ module user_top_brightness_wrapper #(
   );
 
   // Intercept blanking signals with PWM
-  // When app wants to blank, pass through blank (1); otherwise use PWM (0 = on, 1 = off)
   assign blank_hours = inner_blank_hours ? 1'b1 : ~pwm_signal;
   assign blank_minutes = inner_blank_minutes ? 1'b1 : ~pwm_signal;
   assign blank_seconds = inner_blank_seconds ? 1'b1 : ~pwm_signal;

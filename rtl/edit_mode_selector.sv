@@ -40,11 +40,18 @@ module edit_mode_selector #(
       .disarm(disarm),
       .armed(armed)
   );
+  // Counter behavior wiring
   assign enable_counter = armed && press;
-  assign reset_counter = armed == 0;
 
-  assign disarm = (count == 2'b10 && enable_counter);
-  assign mode_enable = armed ? (3'b001 << count) : 3'b000;
+  // Clear counter when not in edit mode or when wrapping from Hours back to Normal
+  assign reset_counter  = (!armed) || (count == 2'b10 && enable_counter);
+  assign disarm         = (count == 2'b10 && enable_counter);
+
+  // Decode the 3-bit one-hot enable vector:
+  // count == 00 -> 3'b001 (Seconds)
+  // count == 01 -> 3'b010 (Minutes)
+  // count == 10 -> 3'b100 (Hours)
+  assign mode_enable    = armed ? (3'b001 << count) : 3'b000;
 endmodule
 
 
