@@ -1,82 +1,74 @@
 `timescale 1ns / 1ps
 
-module stopwatch_counter #(
-    parameter int CYCLES_PER_SECOND = 50000000
+module cascade_counter #(
+    parameter int N2 = 3,
+    parameter int N1 = 4,
+    parameter int N0 = 5,
+
+    parameter int W2 = 2,
+    parameter int W1 = 2,
+    parameter int W0 = 3
 ) (
     input logic clk,
     input logic rst,
-    input logic enable,
+    input logic enable,  // Master system enable status
+    input logic tick,    // The actual 1/100s pulse trigger
 
-    output logic [6:0] minutes = 0,
-    output logic [5:0] seconds = 0,
-    output logic [6:0] centiseconds = 0
+    output logic [W2-1:0] count2,
+    output logic [W1-1:0] count1,
+    output logic [W0-1:0] count0
 );
 
-  // -------------------------------------------------
-  // Tick generator
-  // -------------------------------------------------
+  logic carry0;
+  logic carry1;
 
-  logic tick;
+  localparam logic [W0-1:0] MAX0 = N0 - 1;
+  localparam logic [W1-1:0] MAX1 = N1 - 1;
 
-  restartable_rate_generator #(
-      .CYCLE_COUNT((CYCLES_PER_SECOND / 100))
-  ) rate_gen (
-      .clk (clk),
-      .run (enable),
-      .tick(tick)
+  // ------------------------------------------------------------
+  // Counter 0: Centiseconds
+  // ------------------------------------------------------------
+  // Only steps forward when the system is running AND a tick occurs
+  mod_n_counter #(
+      .N    (N0),
+      .WIDTH(W0)
+  ) u_count0 (
+      .clk   (clk),
+      .rst   (rst),
+      .enable(enable && tick),
+      .count (count0)
   );
 
-  // -------------------------------------------------
-  // Clean one-cycle wrap enables
-  // -------------------------------------------------
+  // carry0 is active ONLY on the exact cycle we are counting AND rolling over
+  assign carry0 = enable && tick && (count0 == MAX0);
 
-  logic sec_enable;
-  logic min_enable;
-
-  assign sec_enable = tick && (centiseconds == 99);
-
-  assign min_enable = tick && (centiseconds == 99) && (seconds == 59);
-
-  // -------------------------------------------------
-  // Centiseconds
-  // -------------------------------------------------
-
-  cascade_counter #(
-      .MAX  (99),
-      .WIDTH(7)
-  ) cs_counter (
-      .clk(clk),
-      .rst(rst),
-      .enable(tick),
-      .count(centiseconds)
+  // ------------------------------------------------------------
+  // Counter 1: Seconds
+  // ------------------------------------------------------------
+  mod_n_counter #(
+      .N    (N1),
+      .WIDTH(W1)
+  ) u_count1 (
+      .clk   (clk),
+      .rst   (rst),
+      .enable(carry0),
+      .count (count1)
   );
 
-  // -------------------------------------------------
-  // Seconds
-  // -------------------------------------------------
+  // carry1 ripples cleanly only when the previous stage is actively rolling over
+  assign carry1 = carry0 && (count1 == MAX1);
 
-  cascade_counter #(
-      .MAX  (59),
-      .WIDTH(6)
-  ) sec_counter (
-      .clk(clk),
-      .rst(rst),
-      .enable(sec_enable),
-      .count(seconds)
-  );
-
-  // -------------------------------------------------
-  // Minutes
-  // -------------------------------------------------
-
-  cascade_counter #(
-      .MAX  (99),
-      .WIDTH(7)
-  ) min_counter (
-      .clk(clk),
-      .rst(rst),
-      .enable(min_enable),
-      .count(minutes)
+  // ------------------------------------------------------------
+  // Counter 2: Minutes
+  // ------------------------------------------------------------
+  mod_n_counter #(
+      .N    (N2),
+      .WIDTH(W2)
+  ) u_count2 (
+      .clk   (clk),
+      .rst   (rst),
+      .enable(carry1),
+      .count (count2)
   );
 
 endmodule

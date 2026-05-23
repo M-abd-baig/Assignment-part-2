@@ -1,159 +1,128 @@
-
 `timescale 1ns / 1ps
-
-module user_top_timer_v1 #(
-    parameter int CYCLES_PER_SECOND = 50_000_000
+module top_time_display_v1 #(
+    parameter int CYCLES_PER_SECOND = 50000000
 ) (
-`ifdef FORMAL
-    output logic probe_running,
-    output logic [2:0] probe_mode_enable,
-`endif
-    input logic clk,
-    input logic [3:0] button,
-    input logic [9:0] sw,
-    output logic [9:0] led,
-    output logic [6:0] hours_disp,
-    output logic [6:0] minutes_disp,
-    output logic [6:0] seconds_disp,
-    output logic blank_hours,
-    output logic blank_minutes,
-    output logic blank_seconds
+    input logic CLOCK_50,
+    input logic [1:0] SW,
+    output logic [6:0] HEX5,
+    output logic [6:0] HEX4,
+    output logic [6:0] HEX3,
+    output logic [6:0] HEX2,
+    output logic [6:0] HEX1,
+    output logic [6:0] HEX0
 );
-
-  // Internal signals
-  logic running;
-  logic [2:0] mode_enable;
-  logic [6:0] hours;
+  /*This top-level_module for the DE1-SoC board displays the time on the seven_segment displays, initialised
+ to 00:00:00, with the tick rate controlled by SW[1:0]*/
+  logic [4:0] hours;
   logic [5:0] minutes;
   logic [5:0] seconds;
-  logic one_sec_tick;
-  logic pwm_2hz;
-  logic rise_start, rise_lap;
-  logic inc_pulse, dec_pulse;
-  logic sec_borrow, min_borrow;
-  logic start_prev, lap_prev;
+  logic tick_1hz;
+  logic tick_25Hz;
+  logic tick_1Khz;
+  logic enable;
+  logic [3:0] hour_tens;
+  logic [3:0] minute_tens;
+  logic [3:0] seconds_tens;
+  logic [3:0] hour_ones;
+  logic [3:0] minute_ones;
+  logic [3:0] seconds_ones;
 
-  // Rising edge detectors for start and lap (active low)
-  always_ff @(posedge clk) begin
-    start_prev <= button[0];
-    lap_prev   <= button[1];
-  end
-  assign rise_start = ~button[0] & ~start_prev;
-  assign rise_lap   = ~button[1] & ~lap_prev;
 
-  // PWM generator for 2Hz flashing (80% duty cycle)
-  pwm_generator #(
-      .PERIOD_CYCLES(CYCLES_PER_SECOND / 2),
-      .DUTY_CYCLES  ((CYCLES_PER_SECOND / 2) * 8 / 10)
-  ) u_pwm (
-      .clk(clk),
-      .rst(1'b0),
-      .pwm_out(pwm_2hz)
+  hms_counter u_hms (
+      .clk(CLOCK_50),
+      .enable(enable),
+      .hours(hours),
+      .minutes(minutes),
+      .seconds(seconds)
+  );
+  binary_to_bcd u_bcd_hours (
+      .bin ({2'b0, hours}),
+      .tens({hour_tens}),
+      .ones(hour_ones)
+  );
+  binary_to_bcd u_bcd_minutes (
+      .bin ({1'b0, minutes}),
+      .tens(minute_tens),
+      .ones(minute_ones)
+  );
+  binary_to_bcd u_bcd_seconds (
+      .bin ({1'b0, seconds}),
+      .tens(seconds_tens),
+      .ones(seconds_ones)
   );
 
-  // 1Hz tick generator
   restartable_rate_generator #(
       .CYCLE_COUNT(CYCLES_PER_SECOND)
-  ) u_tick_gen (
-      .clk (clk),
-      .run (running),
-      .tick(one_sec_tick)
+  ) u_rg_1Hz (
+      .clk (CLOCK_50),
+      .run (1'b1),
+      .tick(tick_1hz)
   );
 
-  // Edit mode selector - PASS RAW BUTTON (active low), NOT rising edge!
-  edit_mode_selector u_mode_selector (
-      .clk(clk),
-      .button(~button[3]),  // Raw button, active low
-      .mode_enable(mode_enable)
+  restartable_rate_generator #(
+      .CYCLE_COUNT(CYCLES_PER_SECOND / 25)
+  ) u_rg_25Hz (
+      .clk (CLOCK_50),
+      .run (1'b1),
+      .tick(tick_25Hz)
   );
-
-  // Auto-repeat for edit mode (uses rising edges of lap/start when in edit mode)
-  button_auto_repeat u_inc_repeat (
-      .clk(clk),
-      .button(rise_lap && (mode_enable != 3'b000)),
-      .pulse(inc_pulse)
+  restartable_rate_generator #(
+      .CYCLE_COUNT(CYCLES_PER_SECOND / 1000)
+  ) u_rg_1KHz (
+      .clk (CLOCK_50),
+      .run (1'b1),
+      .tick(tick_1Khz)
   );
-
-  button_auto_repeat u_dec_repeat (
-      .clk(clk),
-      .button(rise_start && (mode_enable != 3'b000)),
-      .pulse(dec_pulse)
-  );
-
-  // All zeros detection
-  logic all_zeros;
-  assign all_zeros = (hours == 0 && minutes == 0 && seconds == 0);
-
-  // Seconds counter
-  editable_countdown #(
-      .MAX  (59),
-      .WIDTH(6)
-  ) u_seconds (
-      .clk(clk),
-      .clr(1'b0),
-      .tick(one_sec_tick && running && !all_zeros),
-      .edit_mode(mode_enable[0]),
-      .inc(inc_pulse && mode_enable[0]),
-      .dec(dec_pulse && mode_enable[0]),
-      .count(seconds),
-      .borrow_out(sec_borrow)
-  );
-
-  // Minutes counter
-  editable_countdown #(
-      .MAX  (59),
-      .WIDTH(6)
-  ) u_minutes (
-      .clk(clk),
-      .clr(1'b0),
-      .tick(sec_borrow && running && !all_zeros),
-      .edit_mode(mode_enable[1]),
-      .inc(inc_pulse && mode_enable[1]),
-      .dec(dec_pulse && mode_enable[1]),
-      .count(minutes),
-      .borrow_out(min_borrow)
-  );
-
-  // Hours counter
-  editable_countdown #(
-      .MAX  (99),
-      .WIDTH(7)
-  ) u_hours (
-      .clk(clk),
-      .clr(1'b0),
-      .tick(min_borrow && running && !all_zeros),
-      .edit_mode(mode_enable[2]),
-      .inc(inc_pulse && mode_enable[2]),
-      .dec(dec_pulse && mode_enable[2]),
-      .count(hours),
-      .borrow_out()
-  );
-
-  // Running control - edit mode takes priority
-  always_ff @(posedge clk) begin
-    if (mode_enable != 3'b000) begin
-      running <= 1'b0;
-    end else if (rise_start && !all_zeros) begin
-      running <= ~running;
-    end else if (all_zeros) begin
-      running <= 1'b0;
-    end
+  always_comb begin
+    case (SW)
+      2'b00:   enable = tick_1hz;
+      2'b01:   enable = tick_25Hz;
+      2'b10:   enable = tick_1Khz;
+      2'b11:   enable = 1'b1;
+      default: enable = 1'b0;
+    endcase
   end
 
-  // Blanking - flash selected digit at 2Hz
-  assign blank_hours = (mode_enable[2] && pwm_2hz);
-  assign blank_minutes = (mode_enable[1] && pwm_2hz);
-  assign blank_seconds = (mode_enable[0] && pwm_2hz);
-
-  // Outputs
-  assign led = 10'b0;
-  assign hours_disp = hours;
-  assign minutes_disp = {1'b0, minutes};
-  assign seconds_disp = {1'b0, seconds};
-
-`ifdef FORMAL
-  assign probe_running = running;
-  assign probe_mode_enable = mode_enable;
-`endif
-
+  seven_segment u_HEX5 (
+      .digit(hour_tens),
+      .blank(1'b0),
+      .segments(HEX5)
+  );
+  seven_segment u_HEX4 (
+      .digit(hour_ones),
+      .blank(1'b0),
+      .segments(HEX4)
+  );
+  seven_segment u_HEX3 (
+      .digit(minute_tens),
+      .blank(1'b0),
+      .segments(HEX3)
+  );
+  seven_segment u_HEX2 (
+      .digit(minute_ones),
+      .blank(1'b0),
+      .segments(HEX2)
+  );
+  seven_segment u_HEX1 (
+      .digit(seconds_tens),
+      .blank(1'b0),
+      .segments(HEX1)
+  );
+  seven_segment u_HEX0 (
+      .digit(seconds_ones),
+      .blank(1'b0),
+      .segments(HEX0)
+  );
 endmodule
+
+/* 1'b0 just means "enable is low" — the counter stops counting. It's not about the switches.
+
+  Think about it this way — default only triggers if SW somehow has a
+
+  value that isn't 2'b00, 2'b01, 2'b10, or 2'b11. But wait — SW is 2 bits,
+  so those four cases cover every possible combination.
+  The default can never actually happen!
+
+  So default: enable = 1'b0 is really just a safety net that the linter
+  wants to see. It's saying "if somehow an impossible case occurs, stop
+  the counter." In practice it will never trigger.*/
